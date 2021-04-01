@@ -1,0 +1,169 @@
+import pandas as pd 
+from datetime import datetime
+
+data = pd.read_excel('./2020 빅콘테스트 데이터분석분야-챔피언리그_2019년 실적데이터_v1_200818.xlsx')
+
+data.head()
+
+## 1번째 행을 컬럼으로 설정
+data = data.rename(columns=data.iloc[0])
+data = data.drop(data.index[0])  ## 컬럼으로 설정한 행 제거
+data.head()
+
+## 컬럼별 결측치 확인
+data.isnull().sum()
+
+data = data.dropna(subset=['취급액'])  ## 취급액 결측치 행 제거 
+data = data.fillna(method='ffill')  ## 노출시간 결측치 앞의 값으로 채우기 (null값 앞의 방송시간과 동일하므로)
+data.tail()
+
+## 결측치 제거 확인
+data.isnull().sum()
+
+data.info()
+
+from datetime import datetime
+
+data['요일'] = data['방송일시'].dt.weekday
+data = data.astype({'방송일시': 'str'})
+data = data.replace('-','',regex=True)
+data['방송날짜'] = data.방송일시.str.split(' ').str[0]
+data['방송시간'] = data.방송일시.str.split(' ').str[1]
+del data['방송일시']
+
+new_columns = ['방송날짜',  '방송시간', '요일', '노출(분)', '마더코드', '상품코드', '상품명', '상품군', '판매단가','취급액']
+data = data[ new_columns ]
+
+data.head()
+
+# 판매량 컬럼 만들기
+def sales_value (data):    
+    data['판매량'] = data['취급액'] / data['판매단가'] 
+    return data
+
+data = sales_value(data)
+data = data.astype({'판매량': 'int'})
+data.head()
+
+data.to_excel('./실적 전처리.xlsx', index = False)
+
+yearmonth_list = []
+
+for date in data['방송날짜']:
+    yearmonth = str(date)[:6]# 왼쪽부터 6자리 문자 선택
+    yearmonth_list.append(yearmonth)
+
+# 연월/ 월일 컬럼 추가하기
+data['연월'] = yearmonth_list
+
+data.head()
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+import platform 
+from matplotlib import font_manager, rc
+
+# 한글 폰트 사용
+if platform.system() == 'Windows': 
+    path = 'c:/Windows/Fonts/malgun.ttf'
+    font_name = font_manager.FontProperties(fname=path).get_name()
+    rc('font', family=font_name)
+elif platform.system() == 'Darwin':
+    rc('font', family='AppleGothic')
+
+## 월별 취급액 순위
+data_month = pd.pivot_table(data, index = ['연월'], values = ['취급액'], aggfunc='sum')
+data_month.drop(data_month.tail(1).index,inplace=True)  ## 1월 1일 00시 데이터밖에 없는 20년도 데이터 삭제
+
+data_month_S = data_month.sort_values(by = '취급액', ascending= False)
+data_month_S.head(10)
+
+## 월별 취급액 시계열 그래프
+plt.figure(figsize=(15, 6))
+plt.plot(data_month)
+
+## 월별 상품군 취급액 순위
+data_month_P = pd.pivot_table(data, index = ['연월','상품군'], values = ['취급액','판매량'], aggfunc='sum')
+data_month_P.drop(data_month_P.tail(1).index,inplace=True)  ## 1월 1일 00시 데이터밖에 없는 20년도 데이터 삭제
+data_month_P = data_month_P.reset_index(1)  # 인덱스 '연월'로 재설정
+data_month_PS = data_month_P.sort_values(by = '취급액', ascending= False)
+
+data_month_PS.head(10)
+
+## 월별 상품군 매출 추이 시계열 그래프 (trend, seasonality 확인)
+plt.figure(figsize=(15, 6))
+for i in data_month_P.상품군.unique()[:11]:
+    plt.plot(data_month_P[data_month_P.상품군 ==i ].index, data_month_P[data_month_P.상품군 ==i ].취급액, label='상품군 {}'.format(i))
+
+    plt.legend()
+    
+# 상품별 취급액 상위 5개 
+data_P = data.pivot_table(index = ['상품코드','상품군','상품명'], values = ['취급액','판매량'], aggfunc='sum')
+data_P = data_P.sort_values(by = '취급액', ascending = False)
+
+data_P.head()
+
+# 상품별 판매량 상위5 
+data_S = data.pivot_table(index = ['상품코드','상품군','상품명'], values = ['취급액','판매량'], aggfunc='sum')
+data_S = data_S.sort_values(by = '판매량', ascending = False)
+
+data_S.head()
+
+# 상품별 취급액 하위5
+data_P.tail()
+
+# 상품별 판매량 하위5
+data_S.tail()
+
+# 상품군별 판매실적 순위
+data_C = data.pivot_table(index = '상품군', values = ['취급액','판매량'], aggfunc='sum')
+data_CS = data_C.sort_values(by = '취급액', ascending = False)
+# 단위 : 만
+data_CS = data_CS / 10000
+data_CS
+
+# ## 상품군 총 판매실적 비율
+data_C = data_C.reset_index()  #'상품군' 인덱스 -> 컬럼
+
+plt.figure(figsize=(10, 6))
+sns.barplot(data_C['상품군'], data_C['취급액'])
+
+# 요일별 판매실적 순위
+data_week = data.pivot_table(index = '요일', values = ['취급액','판매량'], aggfunc='sum')
+data_week = data_week.sort_values(by = '취급액', ascending= False)
+# 단위 : 만
+data_week = data_week / 10000
+# data_week = data_week.reset_index()
+data_week
+
+# 상품군 요일별 판매실적
+data_CW = data.pivot_table(index = '상품군', columns = '요일', values = '취급액', aggfunc='sum')
+
+# 단위 : 억
+data_CW = data_CW / 10000
+
+# 상품군 요일별 판매실적 히트맵
+fig, ax = plt.subplots( figsize=(len(data_CW),len(data_CW)/2) )   # 그래프 사이즈 지정
+plt.title("상품군 요일별 판매실적", fontsize = 20) # for title
+sns.heatmap(data_CW, cmap = "RdBu_r", 
+           annot = True, fmt = '.1f')
+           
+## 시간대별 판매실적 Top 10
+data_time = data.pivot_table(index = '방송시간', values = ['취급액','판매량'], aggfunc='sum')
+data_time = data_time.sort_values(by = '취급액', ascending= False)
+data_time.head(10)
+
+## 시간대별 판매실적 Top 25 그래프
+data_time = data_time.reset_index()
+data_time = data_time.head(25)
+
+plt.figure(figsize=(20, 6))
+sns.barplot(data_time['방송시간'],data_time['취급액'])
+
+
+
+
+
+
+
+

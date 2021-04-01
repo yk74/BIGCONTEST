@@ -91,7 +91,43 @@ result = pd.concat([df_G,df_S],axis=1)
 
 result.head(10)
 
-## 장르별 인기 순위 계산
-result1 = pd.pivot_table(result, index = ['장르'], values = ['점수'], aggfunc='sum') Result = result1.sort_values(by = '점수', ascending= False)
+## 장르별 점수 합
+result1 = pd.pivot_table(result, index = ['장르'], values = ['점수'], aggfunc='sum')
+Result1 = result1.sort_values(by = '점수', ascending= False)
+
+## 장르별 작품 개수
+result2 = pd.pivot_table(result, index = ['장르'], values = ['점수'], aggfunc='count')
+Result2 = result2.sort_values(by = '점수', ascending= False)
+
+Result = pd.merge(Result1, Result2, left_index=True, right_index=True, how='left')
+
+## 평균 점수 칼럼 생성
+def mean_score (data):    
+    Result['평균 점수'] = Result['점수_x'] / Result['점수_y'] 
+    return Result
+
+Result = mean_score(Result)
+Result = Result.drop(['점수_x','점수_y'],axis=1)
+Result = Result.astype({'평균 점수': 'int'})
+Result = Result.sort_values(by = '평균 점수', ascending= False)
 
 Result
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+import platform 
+from matplotlib import font_manager, rc
+
+## 한글 폰트 사용
+if platform.system() == 'Windows': 
+    path = 'c:/Windows/Fonts/malgun.ttf'
+    font_name = font_manager.FontProperties(fname=path).get_name()
+    rc('font', family=font_name)
+elif platform.system() == 'Darwin':
+    rc('font', family='AppleGothic')
+    
+## 장르별 평균 점수 시각화
+Result = Result.reset_index()  #'장르' 인덱스 -> 컬럼
+
+plt.figure(figsize=(5, 15))
+sns.barplot(Result['평균 점수'], Result['장르'])

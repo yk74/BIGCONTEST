@@ -1,0 +1,19 @@
+import pandas as pd     
+
+# data = pd.DataFrame()
+
+d1 = pd.read_excel('./실적 전처리.xlsx')
+d2 = pd.read_excel('./시청률 전처리.xlsx')
+d3 = pd.read_excel('./날씨 전처리.xlsx')
+
+data = pd.merge(d1, d2, how = 'left')
+data = pd.merge(data, d3, how = 'left')
+
+data
+
+data.isnull().sum()
+
+data = data.fillna(method='ffill')  # 결측치 앞의 값으로 채우기 (null값 앞의 방송과 유사)
+data.isnull().sum()
+
+data.to_excel('./데이터 병합.xlsx', index = False)

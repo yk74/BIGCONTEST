@@ -1,0 +1,194 @@
+import pandas as pd 
+import numpy as np
+
+data = pd.read_excel('./데이터 병합.xlsx')
+
+data.head()
+
+
+## 데이터 정보 파악
+data.info()  
+
+
+## 방송시간 수치형으로 변환
+data = data.astype({'방송시간': 'str'})
+data = data.replace(':','',regex=True)
+data = data.astype({'방송시간': 'int'})
+
+## One hot Encoding
+data = pd.get_dummies(columns=['상품군'],data=data)
+data.head()
+
+
+data.info()  # 바뀐 데이터 타입 확인
+
+
+data.columns
+
+
+data['id']=range(len(data)) ## id 생성
+data = data[['id', '방송날짜', '방송시간', '요일', '노출(분)', '마더코드', '상품코드', '상품명', '판매단가', '취급액',
+       '판매량', '연월', '시청률', '기온(°C)', '강수량(mm)', '상품군_가구', '상품군_가전', '상품군_건강기능',
+       '상품군_농수축', '상품군_생활용품', '상품군_속옷', '상품군_의류', '상품군_이미용', '상품군_잡화',
+       '상품군_주방', '상품군_침구']]
+
+train = data.sample(28000,replace=False,random_state=2020).reset_index().drop(['index'],axis=1)
+test = data.loc[ ~data['id'].isin(train['id']) ].reset_index().drop(['index'],axis=1)
+
+
+## input 변수 지정
+
+input_var = ['방송날짜', '방송시간', '요일', '노출(분)', '마더코드', '상품코드', '판매단가',
+             '시청률', '기온(°C)', '강수량(mm)','상품군_가구', '상품군_가전', '상품군_건강기능',
+             '상품군_농수축', '상품군_생활용품', '상품군_속옷', '상품군_의류', '상품군_이미용',
+             '상품군_잡화', '상품군_주방', '상품군_침구']  
+# 예측변수와의 상관계수 너무 높은 변수 제거 : 판매량
+# 상품명은 상품코드와 중복되기 때문에 넣지 않음
+
+
+## 상관계수 파악
+corr = train[input_var].corr()
+corr.style.background_gradient(cmap='RdBu_r')
+
+
+
+### 1. Xgboost ###
+
+## xgboost 패키지 설치 
+!pip install xgboost
+
+
+from xgboost import XGBRegressor
+from sklearn.metrics import mean_absolute_error as mae
+
+## 최적의 n_estimators 찾기
+for n in [100,200,300,400,500,600,700,800,900, 1000]:
+    xgb = XGBRegressor( n_estimators = n, learning_rate = 0.1)
+    xgb.fit(train[input_var], train['취급액'])
+    predictions = xgb.predict(test[input_var])
+    print(str(n)+' mae : '+str(mae(test['취급액'], predictions)))  ## 예측값 차이 계산
+    
+    
+## 변수 중요도 시각화를 위한 패키지 설정
+import platform 
+from matplotlib import font_manager, rc
+
+## 한글 폰트 설정
+if platform.system() == 'Windows': 
+    path = 'c:/Windows/Fonts/malgun.ttf'
+    font_name = font_manager.FontProperties(fname=path).get_name()
+    rc('font', family=font_name)
+elif platform.system() == 'Darwin':
+    rc('font', family='AppleGothic')
+    
+    
+## 제작된 모델의 변수중요도를 살펴봅니다.
+xgb.feature_importances_
+
+imp_df = pd.DataFrame({"var": input_var,
+                       "imp":xgb.feature_importances_})
+
+## 중요한 변수 순서대로 나열합니다.
+imp_df = imp_df.sort_values(['imp'],ascending=False)
+
+## 변수중요도 그래프
+import matplotlib.pyplot as plt
+plt.bar(imp_df['var'],imp_df['imp'])
+plt.xticks(rotation=90)
+
+
+import numpy as np
+score_list=[]
+selected_varnum=[]
+
+## 변수중요도가 중요한 순서대로 input 변수를 늘려가며 cross validation을 실행시킵니다.
+## cross validation 결과물을 score_list에 저장합니다.
+for i in range(1,22):
+    selected_var = imp_df['var'].iloc[:i].to_list()
+    scores = cross_val_score(xgb, 
+                             train[selected_var], 
+                             train['취급액'], 
+                             scoring="neg_mean_absolute_error", cv=5)
+    score_list.append(-np.mean(scores))
+    selected_varnum.append(i)
+
+score_list 
+
+
+## 선택 변수에 따른 cross validation score 시각화
+plt.plot(selected_varnum, score_list)
+# mse 최저점인 변수 조합 선택
+
+
+## 입력 변수 재설정 = 중요 변수 상위 18개
+input_var = ['방송날짜', '방송시간', '요일', '노출(분)', 
+             '마더코드', '상품코드', '판매단가','상품군_가구',
+             '상품군_가전', '상품군_건강기능', '상품군_농수축',
+             '상품군_생활용품', '상품군_속옷','상품군_의류', 
+             '상품군_이미용', '상품군_잡화','상품군_주방', '상품군_침구']
+             
+             
+## 최적의 n_estimators 찾기
+for n in [100,200,300,400,500,600,700,800,900, 1000]:
+    xgb = XGBRegressor( n_estimators = n, learning_rate = 0.1)
+    xgb.fit(train[input_var],train['취급액'])
+    predictions = xgb.predict(test[input_var])
+    print(str(n)+' mae : '+str(mae(test['취급액'], predictions)))  ## 예측값 차이 계산
+    
+    
+    
+### 2.K-Nearest Neighbor (KNN) ###
+
+# knn 회귀 모델 생성
+from sklearn.neighbors import KNeighborsRegressor
+
+## 최적의 k찾기
+for k in range(1,30):
+    knn = KNeighborsRegressor(n_neighbors=k)
+    knn.fit( train[input_var] , train['취급액'] )
+    predictions = knn.predict( test[input_var] )
+    print(str(k)+' mae : '+str(mae(test['취급액'], predictions)))
+    
+    
+## cross validation
+
+knn = KNeighborsRegressor(n_neighbors=3)
+scores = cross_val_score(knn, train[input_var], train['취급액'], scoring="neg_mean_absolute_error", cv=10)
+## cv : 데이터 분할 개수 (몇 등분 할건지)
+
+print(-np.mean(scores))
+
+
+data1 = pd.read_excel('./예측데이터 전처리.xlsx')
+data1.head()
+
+
+## 방송시간 수치형으로 변환
+data1 = data1.astype({'방송시간': 'str'})
+data1 = data1.replace(':','',regex=True)
+data1 = data1.astype({'방송시간': 'int'})
+
+## One hot Encoding
+data1 = pd.get_dummies(columns=['상품군'],data=data1)
+data1.head()
+
+data1.info()
+
+submission = pd.read_excel('./예측데이터 전처리.xlsx')
+
+
+## Xgboost 모델 적용
+Test = data1
+
+xgb = XGBRegressor( n_estimators = 1000, learning_rate = 0.1)
+xgb.fit(train[input_var],train['취급액'])
+Test['취급액'] = xgb.predict(Test[input_var])
+submission['취급액'] = Test['취급액']
+
+submission
+
+submission.isnull().sum()
+
+submission = submission.astype({'취급액': 'int'})
+
+submission.to_excel('./submission.xlsx', index = False)

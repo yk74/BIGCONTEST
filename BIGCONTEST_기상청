@@ -1,0 +1,58 @@
+import pandas as pd 
+
+data = pd.read_csv('./날씨.csv',encoding='CP949')
+
+# 빈 데이터 0 채우기
+data = data.fillna(0)
+
+# 불필요한 지점코드 제거
+data = data.drop(['지점'], axis=1)
+
+data.head()
+
+data.info()
+
+# 수도권 지역 강수량,기온 평균
+data = data.pivot_table(index = '일시', values = ['기온(°C)','강수량(mm)'], aggfunc='mean')
+
+data.head()
+
+## 소수점 자리수 제한
+기온 = round(data['기온(°C)'],1) 
+data['기온(°C)'] = 기온
+
+data.head()
+
+# 시간을 20분 단위로 upsampling
+data['일시'] = pd.date_range("2019-01-01 00:00:00", "2020-01-01 00:00:00", freq="H")
+data = data.set_index('일시')
+data = data.resample('20T').ffill()
+
+data.head()
+
+data = data.reset_index()
+data = data.astype({'일시': 'str'})
+data = data.replace('-','',regex=True)
+data['방송날짜'] = data.일시.str.split(' ').str[0]
+data['방송시간'] = data.일시.str.split(' ').str[1]
+
+data.head()
+
+del data['일시']
+new_columns = ['방송날짜',  '방송시간', '기온(°C)','강수량(mm)']
+data = data[ new_columns ]
+
+data.head()
+
+# 전처리 데이터 엑셀로 저장
+data.to_excel('./날씨 전처리.xlsx', index = False)
+
+
+
+
+
+
+
+
+
+

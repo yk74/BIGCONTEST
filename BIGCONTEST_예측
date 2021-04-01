@@ -1,0 +1,59 @@
+import pandas as pd 
+import numpy as np
+
+# 데이터 불러오기
+data = pd.read_excel('./2020 빅콘테스트 데이터분석분야-챔피언리그_2020년 6월 판매실적예측데이터(평가데이터).xlsx')
+data1 = pd.read_excel('./데이터 병합.xlsx')
+
+
+# 첫번째 행을 칼럼으로 설정 후 제거
+data = data.rename(columns=data.iloc[0])
+data = data.drop(data.index[0])
+
+
+# 판매단가 0인 상품 제거
+data = data[data.판매단가 !=0]
+data.head()
+
+
+data.info()
+
+
+## 컬럼별 결측치 확인
+data.isnull().sum()
+
+
+## 결측치 처리
+data = data.fillna(method='ffill')  ## 노출시간 결측치 앞의 값으로 채우기 (null값 앞의 방송시간과 동일하므로)
+data.isnull().sum()
+
+data.tail()
+
+
+from datetime import datetime
+
+data['요일'] = data['방송일시'].dt.weekday
+data = data.astype({'방송일시': 'str'})
+data = data.replace('-','',regex=True)
+data['방송날짜'] = data.방송일시.str.split(' ').str[0]
+data['방송시간'] = data.방송일시.str.split(' ').str[1]
+del data['방송일시']
+
+new_columns = ['방송날짜',  '방송시간', '요일', '노출(분)', '마더코드', '상품코드', '상품명', '상품군', '판매단가','취급액']
+data = data[ new_columns ]
+
+data.head()
+
+
+data.info()
+
+
+data = data.astype({'방송날짜': 'int'})
+data = data.astype({'노출(분)': 'int'})
+data = data.astype({'상품코드': 'int'})
+data = data.astype({'마더코드': 'int'})
+
+data.head()
+
+
+data.to_excel('./예측데이터 전처리.xlsx', index = False)
